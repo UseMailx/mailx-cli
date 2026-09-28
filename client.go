@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -48,35 +49,59 @@ type apiError struct {
 }
 
 // get performs an authenticated GET and decodes a 2xx JSON body into out.
-// A non-2xx response is returned as an error carrying the server's own
+func (c *client) get(ctx context.Context, path string, out any) error {
+	return c.do(ctx, http.MethodGet, path, nil, out)
+}
+
+// post performs an authenticated POST with a JSON body and decodes a 2xx
+// JSON response into out. Used only for the preparation-tier endpoints this
+// CLI foundation calls (e.g. template preview) - never for an execute-tier
+// action (send/rotate/delete) without deliberately adding that command.
+func (c *client) post(ctx context.Context, path string, body, out any) error {
+	return c.do(ctx, http.MethodPost, path, body, out)
+}
+
+// do is the one place a request is built and its response interpreted. A
+// non-2xx response is returned as an error carrying the server's own
 // message, never a generic "request failed" - CLI output should be at
 // least as informative as the API's own structured error model (spec
 // section 28).
-func (c *client) get(ctx context.Context, path string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+func (c *client) do(ctx context.Context, method, path string, body, out any) error {
+	var reader io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		reader = bytes.NewReader(encoded)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reader)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("request to %s failed: %w", c.baseURL, err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		var ae apiError
-		if json.Unmarshal(body, &ae) == nil && ae.Error.Message != "" {
+		if json.Unmarshal(respBody, &ae) == nil && ae.Error.Message != "" {
 			return fmt.Errorf("%s (%s)", ae.Error.Message, ae.Error.Code)
 		}
-		return fmt.Errorf("unexpected response: %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return fmt.Errorf("unexpected response: %d %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
 	if out == nil {
 		return nil
 	}
-	return json.Unmarshal(body, out)
+	return json.Unmarshal(respBody, out)
 }
