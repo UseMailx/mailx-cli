@@ -53,16 +53,6 @@ mailx-cli emails send --from hello@example.com --to dest@example.com \
   --idempotency-key my-unique-key-1
 ```
 
-## Design
-
-- **No CLI-only business logic.** Every command wraps an existing, documented MailX API endpoint. Anything the CLI
-  can do, a script can do directly against the API — the CLI just makes it convenient.
-- **Read → prepare → execute.** Read commands (`list`, `get`, `inspect`, `diagnose`, `preview`) never have side
-  effects. Write/execute commands (`create`, `update`, `delete`, `send`) do, and `delete` always confirms first
-  unless you pass `--yes`.
-- **Idempotent by default where it matters.** `emails send --idempotency-key KEY` makes a retried send safe: the
-  same key returns the original result instead of sending twice.
-
 ## License
 
 MIT
