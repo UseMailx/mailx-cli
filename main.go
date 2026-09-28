@@ -34,14 +34,14 @@ var commands = []command{
 	{name: "whoami", summary: "Show the authenticated organization, credential, and scopes", run: func(ctx context.Context, c *client, _ []string) error {
 		return runWhoami(ctx, c, os.Stdout)
 	}},
-	{name: "domains", summary: "list | inspect DOMAIN_ID", run: func(ctx context.Context, c *client, args []string) error {
-		return runDomains(ctx, c, os.Stdout, args)
+	{name: "domains", summary: "list | inspect | create | verify | delete", run: func(ctx context.Context, c *client, args []string) error {
+		return runDomains(ctx, c, os.Stdin, os.Stdout, args)
 	}},
-	{name: "emails", summary: "list | get MESSAGE_ID | diagnose MESSAGE_ID", run: func(ctx context.Context, c *client, args []string) error {
+	{name: "emails", summary: "list | get | diagnose | send", run: func(ctx context.Context, c *client, args []string) error {
 		return runEmails(ctx, c, os.Stdout, args)
 	}},
-	{name: "templates", summary: "list | get TEMPLATE_ID | preview TEMPLATE_ID", run: func(ctx context.Context, c *client, args []string) error {
-		return runTemplates(ctx, c, os.Stdout, args)
+	{name: "templates", summary: "list | get | preview | create | update | delete", run: func(ctx context.Context, c *client, args []string) error {
+		return runTemplates(ctx, c, os.Stdin, os.Stdout, args)
 	}},
 }
 

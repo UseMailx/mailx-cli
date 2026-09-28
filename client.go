@@ -50,15 +50,32 @@ type apiError struct {
 
 // get performs an authenticated GET and decodes a 2xx JSON body into out.
 func (c *client) get(ctx context.Context, path string, out any) error {
-	return c.do(ctx, http.MethodGet, path, nil, out)
+	return c.do(ctx, http.MethodGet, path, nil, "", out)
 }
 
 // post performs an authenticated POST with a JSON body and decodes a 2xx
-// JSON response into out. Used only for the preparation-tier endpoints this
-// CLI foundation calls (e.g. template preview) - never for an execute-tier
-// action (send/rotate/delete) without deliberately adding that command.
+// JSON response into out.
 func (c *client) post(ctx context.Context, path string, body, out any) error {
-	return c.do(ctx, http.MethodPost, path, body, out)
+	return c.do(ctx, http.MethodPost, path, body, "", out)
+}
+
+// postIdempotent is post plus an Idempotency-Key header - for execute-tier
+// commands (spec section 27: an agent/script retry must never duplicate a
+// real side effect). idempotencyKey may be empty, in which case the
+// request is sent without one, exactly like omitting the header by hand.
+func (c *client) postIdempotent(ctx context.Context, path string, body any, idempotencyKey string, out any) error {
+	return c.do(ctx, http.MethodPost, path, body, idempotencyKey, out)
+}
+
+// patch performs an authenticated PATCH with a JSON body.
+func (c *client) patch(ctx context.Context, path string, body, out any) error {
+	return c.do(ctx, http.MethodPatch, path, body, "", out)
+}
+
+// deleteReq performs an authenticated DELETE (named to avoid shadowing the
+// builtin delete).
+func (c *client) deleteReq(ctx context.Context, path string) error {
+	return c.do(ctx, http.MethodDelete, path, nil, "", nil)
 }
 
 // do is the one place a request is built and its response interpreted. A
@@ -66,7 +83,7 @@ func (c *client) post(ctx context.Context, path string, body, out any) error {
 // message, never a generic "request failed" - CLI output should be at
 // least as informative as the API's own structured error model (spec
 // section 28).
-func (c *client) do(ctx context.Context, method, path string, body, out any) error {
+func (c *client) do(ctx context.Context, method, path string, body any, idempotencyKey string, out any) error {
 	var reader io.Reader
 	if body != nil {
 		encoded, err := json.Marshal(body)
@@ -83,6 +100,9 @@ func (c *client) do(ctx context.Context, method, path string, body, out any) err
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if idempotencyKey != "" {
+		req.Header.Set("Idempotency-Key", idempotencyKey)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {

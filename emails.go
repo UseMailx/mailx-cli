@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io"
+	"strings"
 	"text/tabwriter"
 )
 
@@ -42,13 +44,13 @@ type emailDiagnostics struct {
 	} `json:"attempts"`
 }
 
-// runEmails dispatches `mailx-cli emails <verb>`. Only read operations
-// exist so far - emails:send (a genuine execute-tier action, spec section
-// 11) is deferred to a later CLI milestone rather than added alongside
-// these low-risk reads.
+// runEmails dispatches `mailx-cli emails <verb>`. send is execute-tier
+// (spec section 11) - it goes through the exact same POST /emails
+// sending-safety path (suppression, idempotency, plan limits) as every
+// other client; the CLI adds no send logic of its own.
 func runEmails(ctx context.Context, c *client, out io.Writer, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mailx-cli emails <list|get|diagnose> [MESSAGE_ID]")
+		return fmt.Errorf("usage: mailx-cli emails <list|get|diagnose|send> [args]")
 	}
 	switch args[0] {
 	case "list":
@@ -63,9 +65,61 @@ func runEmails(ctx context.Context, c *client, out io.Writer, args []string) err
 			return fmt.Errorf("usage: mailx-cli emails diagnose MESSAGE_ID")
 		}
 		return runEmailsDiagnose(ctx, c, out, args[1])
+	case "send":
+		return runEmailsSendCmd(ctx, c, out, args[1:])
 	default:
-		return fmt.Errorf("unknown emails command %q (want list|get|diagnose)", args[0])
+		return fmt.Errorf("unknown emails command %q (want list|get|diagnose|send)", args[0])
 	}
+}
+
+// repeatableFlag collects every occurrence of a flag.Value flag (e.g.
+// --to a@x.com --to b@x.com) instead of the stdlib's default of only
+// keeping the last one.
+type repeatableFlag []string
+
+func (r *repeatableFlag) String() string { return strings.Join(*r, ",") }
+func (r *repeatableFlag) Set(v string) error {
+	*r = append(*r, v)
+	return nil
+}
+
+// runEmailsSendCmd parses `mailx-cli emails send`'s flags and calls
+// runEmailsSend. Kept separate from the flag-parsing-free verbs above so
+// their signatures stay simple.
+func runEmailsSendCmd(ctx context.Context, c *client, out io.Writer, args []string) error {
+	fs := flag.NewFlagSet("emails send", flag.ContinueOnError)
+	from := fs.String("from", "", "sender address (required)")
+	var to, cc, bcc, vars repeatableFlag
+	fs.Var(&to, "to", "recipient address (repeatable)")
+	fs.Var(&cc, "cc", "cc address (repeatable)")
+	fs.Var(&bcc, "bcc", "bcc address (repeatable)")
+	subject := fs.String("subject", "", "subject (ignored if --template-id is given)")
+	text := fs.String("text", "", "plain-text body (ignored if --template-id is given)")
+	html := fs.String("html", "", "HTML body (ignored if --template-id is given)")
+	templateID := fs.String("template-id", "", "send a Template instead of raw subject/text/html")
+	fs.Var(&vars, "var", "template variable as key=value (repeatable, only with --template-id)")
+	idempotencyKey := fs.String("idempotency-key", "", "optional Idempotency-Key: a retry with the same key and request never double-sends")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *from == "" {
+		return fmt.Errorf("usage: mailx-cli emails send --from ADDR --to ADDR [...] (--subject S --text T | --template-id ID)")
+	}
+	if len(to) == 0 {
+		return fmt.Errorf("emails send: at least one --to is required")
+	}
+	variables := map[string]string{}
+	for _, kv := range vars {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok {
+			return fmt.Errorf("emails send: --var must be key=value, got %q", kv)
+		}
+		variables[k] = v
+	}
+	return runEmailsSend(ctx, c, out, sendEmailRequest{
+		From: *from, To: to, Cc: cc, Bcc: bcc, Subject: *subject, Text: *text, HTML: *html,
+		TemplateID: *templateID, Variables: variables,
+	}, *idempotencyKey)
 }
 
 func runEmailsList(ctx context.Context, c *client, out io.Writer) error {
@@ -102,6 +156,34 @@ func runEmailsGet(ctx context.Context, c *client, out io.Writer, id string) erro
 	fmt.Fprintf(out, "To\n  %v\n\n", e.To)
 	fmt.Fprintf(out, "Subject\n  %s\n\n", e.Subject)
 	fmt.Fprintf(out, "Status\n  %s\n", e.Status)
+	return nil
+}
+
+// sendEmailRequest mirrors internal/api's sendEmailRequest JSON shape
+// (only the fields this CLI foundation exposes - scheduling/tracking flags
+// are left for a later command).
+type sendEmailRequest struct {
+	From       string            `json:"from"`
+	To         []string          `json:"to"`
+	Cc         []string          `json:"cc,omitempty"`
+	Bcc        []string          `json:"bcc,omitempty"`
+	Subject    string            `json:"subject,omitempty"`
+	Text       string            `json:"text,omitempty"`
+	HTML       string            `json:"html,omitempty"`
+	TemplateID string            `json:"template_id,omitempty"`
+	Variables  map[string]string `json:"variables,omitempty"`
+}
+
+// runEmailsSend implements `mailx-cli emails send`: POST /emails,
+// emails:send. Goes through client.postIdempotent so a caller who passed
+// --idempotency-key gets the same replay-safety every other client gets
+// (spec section 27) - a retry can never double-send.
+func runEmailsSend(ctx context.Context, c *client, out io.Writer, req sendEmailRequest, idempotencyKey string) error {
+	var e email
+	if err := c.postIdempotent(ctx, "/emails", req, idempotencyKey, &e); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Accepted %s (status: %s)\n", e.ID, e.Status)
 	return nil
 }
 
