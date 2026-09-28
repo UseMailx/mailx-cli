@@ -2,6 +2,7 @@ version: 2
 
 builds:
   - id: mailx-cli
+    main: ./cmd/mailx-cli
     binary: mailx-cli
     env:
       - CGO_ENABLED=0

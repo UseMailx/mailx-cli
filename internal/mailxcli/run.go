@@ -1,17 +1,13 @@
-// Command mailx-cli is MailX's developer-facing CLI: a thin client over the
+// Package mailxcli is MailX's developer-facing CLI: a thin client over the
 // Product API, authenticated the same way any SDK or the MCP server is
 // (an API key, via MAILX_API_KEY/MAILX_API_BASE_URL - the same override
-// convention DEC-200 established for every other client). It is NOT the
-// operator/admin tool (see cmd/mailx, which talks directly to Postgres) -
-// this binary never touches the database, a queue, or any internal
-// package; every command is an HTTP call to a documented /v1 route.
+// convention every other MailX client uses). It contains no business logic
+// of its own; every command is an HTTP call to a documented /v1 route.
 //
-// This is intentionally a small foundation, not the full CLI the platform
-// spec describes: one command (whoami) proving the dispatch shape, ready
-// for `emails`, `domains`, `templates` etc. to be added as their own files
-// following the same pattern - each a thin wrapper over an existing API
-// capability, never new business logic living only in the CLI.
-package main
+// The actual binary entrypoint is cmd/mailx-cli/main.go, which does nothing
+// but call Run - keeping this package importable/testable on its own and
+// leaving room for other entrypoints (e.g. a future plugin host) later.
+package mailxcli
 
 import (
 	"context"
@@ -45,11 +41,9 @@ var commands = []command{
 	}},
 }
 
-func main() {
-	os.Exit(run(os.Args[1:]))
-}
-
-func run(args []string) int {
+// Run executes one CLI invocation and returns the process exit code -
+// cmd/mailx-cli/main.go's only job is os.Exit(mailxcli.Run(os.Args[1:])).
+func Run(args []string) int {
 	if len(args) == 0 {
 		printUsage()
 		return 2

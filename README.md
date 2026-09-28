@@ -9,7 +9,7 @@ logic of its own: every command is an HTTP call to a documented `/v1` route.
 With Go installed:
 
 ```bash
-go install github.com/UseMailx/mailx-cli@latest
+go install github.com/UseMailx/mailx-cli/cmd/mailx-cli@latest
 ```
 
 This installs a `mailx-cli` binary onto your `$GOPATH/bin` (or `$GOBIN`).
