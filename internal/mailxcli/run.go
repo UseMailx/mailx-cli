@@ -39,6 +39,9 @@ var commands = []command{
 	{name: "templates", summary: "list | get | preview | create | update | delete", run: func(ctx context.Context, c *client, args []string) error {
 		return runTemplates(ctx, c, os.Stdin, os.Stdout, args)
 	}},
+	{name: "webhooks", summary: "list | get | create | delete | rotate-secret | deliveries", run: func(ctx context.Context, c *client, args []string) error {
+		return runWebhooks(ctx, c, os.Stdin, os.Stdout, args)
+	}},
 }
 
 // Run executes one CLI invocation and returns the process exit code -

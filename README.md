@@ -36,6 +36,7 @@ mailx-cli domains   spf|dmarc <get|verify> DOMAIN_ID
 mailx-cli domains   bimi <get|verify> DOMAIN_ID
 mailx-cli templates list | get | preview | create | update | delete [--yes]
 mailx-cli emails    list | get | diagnose | send
+mailx-cli webhooks  list | get | create | delete [--yes] | rotate-secret | deliveries
 ```
 
 Run `mailx-cli --help` for the full command list.
@@ -54,6 +55,10 @@ mailx-cli templates preview TEMPLATE_ID
 mailx-cli emails send --from hello@example.com --to dest@example.com \
   --template-id TEMPLATE_ID --var name=Ada \
   --idempotency-key my-unique-key-1
+
+mailx-cli webhooks create --url https://example.com/hook --events email.delivered,email.bounced
+mailx-cli webhooks rotate-secret WEBHOOK_ID
+mailx-cli webhooks deliveries WEBHOOK_ID
 ```
 
 ## License
