@@ -30,7 +30,7 @@ var commands = []command{
 	{name: "whoami", summary: "Show the authenticated organization, credential, and scopes", run: func(ctx context.Context, c *client, _ []string) error {
 		return runWhoami(ctx, c, os.Stdout)
 	}},
-	{name: "domains", summary: "list | inspect | create | verify | delete", run: func(ctx context.Context, c *client, args []string) error {
+	{name: "domains", summary: "list | inspect | create | verify | delete | dkim | spf | dmarc | bimi", run: func(ctx context.Context, c *client, args []string) error {
 		return runDomains(ctx, c, os.Stdin, os.Stdout, args)
 	}},
 	{name: "emails", summary: "list | get | diagnose | send", run: func(ctx context.Context, c *client, args []string) error {

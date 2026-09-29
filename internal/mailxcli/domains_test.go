@@ -182,3 +182,138 @@ func TestRunDomainsDeleteYesFlagSkipsPrompt(t *testing.T) {
 		t.Fatalf("expected --yes to skip confirmation and delete, got %q", buf.String())
 	}
 }
+
+func TestRunDomainsDKIM(t *testing.T) {
+	cases := []struct {
+		verb, method, path string
+	}{
+		{"get", "GET", "/domains/d1/dkim"},
+		{"create", "POST", "/domains/d1/dkim"},
+		{"verify", "POST", "/domains/d1/dkim/verify"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.verb, func(t *testing.T) {
+			var gotMethod, gotPath string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotMethod, gotPath = r.Method, r.URL.Path
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"status":"verified","selector":"mailx"}`))
+			}))
+			defer srv.Close()
+			c, _ := newClient(srv.URL, "k")
+			var buf bytes.Buffer
+			if err := runDomains(t.Context(), c, strings.NewReader(""), &buf, []string{"dkim", tc.verb, "d1"}); err != nil {
+				t.Fatal(err)
+			}
+			if gotMethod != tc.method || gotPath != tc.path {
+				t.Fatalf("expected %s %s, got %s %s", tc.method, tc.path, gotMethod, gotPath)
+			}
+			if !strings.Contains(buf.String(), "DKIM") || !strings.Contains(buf.String(), "verified") {
+				t.Fatalf("expected DKIM status in output, got %q", buf.String())
+			}
+		})
+	}
+}
+
+func TestRunDomainsSPF(t *testing.T) {
+	cases := []struct{ verb, method, path string }{
+		{"get", "GET", "/domains/d1/spf"},
+		{"verify", "POST", "/domains/d1/spf/verify"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.verb, func(t *testing.T) {
+			var gotMethod, gotPath string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotMethod, gotPath = r.Method, r.URL.Path
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"status":"verified"}`))
+			}))
+			defer srv.Close()
+			c, _ := newClient(srv.URL, "k")
+			var buf bytes.Buffer
+			if err := runDomains(t.Context(), c, strings.NewReader(""), &buf, []string{"spf", tc.verb, "d1"}); err != nil {
+				t.Fatal(err)
+			}
+			if gotMethod != tc.method || gotPath != tc.path {
+				t.Fatalf("expected %s %s, got %s %s", tc.method, tc.path, gotMethod, gotPath)
+			}
+			if !strings.Contains(buf.String(), "SPF") {
+				t.Fatalf("expected SPF label in output, got %q", buf.String())
+			}
+		})
+	}
+}
+
+func TestRunDomainsDMARC(t *testing.T) {
+	cases := []struct{ verb, method, path string }{
+		{"get", "GET", "/domains/d1/dmarc"},
+		{"verify", "POST", "/domains/d1/dmarc/verify"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.verb, func(t *testing.T) {
+			var gotMethod, gotPath string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotMethod, gotPath = r.Method, r.URL.Path
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"status":"verified"}`))
+			}))
+			defer srv.Close()
+			c, _ := newClient(srv.URL, "k")
+			var buf bytes.Buffer
+			if err := runDomains(t.Context(), c, strings.NewReader(""), &buf, []string{"dmarc", tc.verb, "d1"}); err != nil {
+				t.Fatal(err)
+			}
+			if gotMethod != tc.method || gotPath != tc.path {
+				t.Fatalf("expected %s %s, got %s %s", tc.method, tc.path, gotMethod, gotPath)
+			}
+			if !strings.Contains(buf.String(), "DMARC") {
+				t.Fatalf("expected DMARC label in output, got %q", buf.String())
+			}
+		})
+	}
+}
+
+func TestRunDomainsBIMI(t *testing.T) {
+	cases := []struct{ verb, method, path string }{
+		{"get", "GET", "/domains/d1/bimi"},
+		{"verify", "POST", "/domains/d1/bimi/verify"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.verb, func(t *testing.T) {
+			var gotMethod, gotPath string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotMethod, gotPath = r.Method, r.URL.Path
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"status":"verified"}`))
+			}))
+			defer srv.Close()
+			c, _ := newClient(srv.URL, "k")
+			var buf bytes.Buffer
+			if err := runDomains(t.Context(), c, strings.NewReader(""), &buf, []string{"bimi", tc.verb, "d1"}); err != nil {
+				t.Fatal(err)
+			}
+			if gotMethod != tc.method || gotPath != tc.path {
+				t.Fatalf("expected %s %s, got %s %s", tc.method, tc.path, gotMethod, gotPath)
+			}
+			if !strings.Contains(buf.String(), "BIMI") {
+				t.Fatalf("expected BIMI label in output, got %q", buf.String())
+			}
+		})
+	}
+}
+
+func TestRunDomainsAuthUsageErrors(t *testing.T) {
+	c, _ := newClient("http://unused.invalid", "k")
+	var buf bytes.Buffer
+	cases := [][]string{
+		{"dkim"}, {"dkim", "bogus", "d1"},
+		{"spf"}, {"spf", "bogus", "d1"},
+		{"dmarc"}, {"dmarc", "bogus", "d1"},
+		{"bimi"}, {"bimi", "bogus", "d1"},
+	}
+	for _, args := range cases {
+		if err := runDomains(t.Context(), c, strings.NewReader(""), &buf, args); err == nil {
+			t.Fatalf("expected an error for args %v", args)
+		}
+	}
+}

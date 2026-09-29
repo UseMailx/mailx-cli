@@ -31,10 +31,13 @@ type domainList struct {
 // execute-tier (spec section 11: they produce a real side effect - a new
 // domain row, a DNS verification attempt, or an irreversible deletion), so
 // unlike list/inspect they never happen implicitly and delete asks for
-// confirmation before doing anything (see runDomainsDelete).
+// confirmation before doing anything (see runDomainsDelete). dkim/spf/
+// dmarc/bimi are their own nested verb groups (`domains dkim get ID`, etc)
+// since each is a distinct DNS authentication mechanism on the domain, not
+// a single flat operation.
 func runDomains(ctx context.Context, c *client, in io.Reader, out io.Writer, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mailx-cli domains <list|inspect|create|verify|delete> [args]")
+		return fmt.Errorf("usage: mailx-cli domains <list|inspect|create|verify|delete|dkim|spf|dmarc|bimi> [args]")
 	}
 	switch args[0] {
 	case "list":
@@ -64,8 +67,16 @@ func runDomains(ctx context.Context, c *client, in io.Reader, out io.Writer, arg
 			return fmt.Errorf("usage: mailx-cli domains delete [--yes] DOMAIN_ID")
 		}
 		return runDomainsDelete(ctx, c, in, out, fs.Arg(0), *yes)
+	case "dkim":
+		return runDomainsDKIM(ctx, c, out, args[1:])
+	case "spf":
+		return runDomainsSPF(ctx, c, out, args[1:])
+	case "dmarc":
+		return runDomainsDMARC(ctx, c, out, args[1:])
+	case "bimi":
+		return runDomainsBIMI(ctx, c, out, args[1:])
 	default:
-		return fmt.Errorf("unknown domains command %q (want list|inspect|create|verify|delete)", args[0])
+		return fmt.Errorf("unknown domains command %q (want list|inspect|create|verify|delete|dkim|spf|dmarc|bimi)", args[0])
 	}
 }
 
@@ -155,5 +166,113 @@ func runDomainsDelete(ctx context.Context, c *client, in io.Reader, out io.Write
 		return err
 	}
 	fmt.Fprintf(out, "Deleted domain %s.\n", id)
+	return nil
+}
+
+// authRecordStatus mirrors the shape GET .../dkim|spf|dmarc|bimi returns:
+// a status plus the DNS record(s) to publish. Printed generically since
+// each mechanism's own extra fields (e.g. DKIM's selector) vary and the
+// API is the source of truth for what's actually returned.
+func printAuthStatus(out io.Writer, label string, status map[string]any) {
+	fmt.Fprintf(out, "%s\n", label)
+	for k, v := range status {
+		fmt.Fprintf(out, "  %s: %v\n", k, v)
+	}
+}
+
+func runDomainsDKIM(ctx context.Context, c *client, out io.Writer, args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: mailx-cli domains dkim <get|create|verify> DOMAIN_ID")
+	}
+	id := args[1]
+	var status map[string]any
+	switch args[0] {
+	case "get":
+		if err := c.get(ctx, "/domains/"+id+"/dkim", &status); err != nil {
+			return err
+		}
+	case "create":
+		// Generates or rotates the domain's DKIM key - an execute-tier
+		// operation with a real, irreversible effect (the old key stops
+		// signing), but not destructive in the delete sense, so no
+		// confirmation prompt: this mirrors "create/rotate an API key",
+		// which the CLI also doesn't confirm.
+		if err := c.post(ctx, "/domains/"+id+"/dkim", nil, &status); err != nil {
+			return err
+		}
+	case "verify":
+		if err := c.post(ctx, "/domains/"+id+"/dkim/verify", nil, &status); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unknown domains dkim command %q (want get|create|verify)", args[0])
+	}
+	printAuthStatus(out, "DKIM", status)
+	return nil
+}
+
+func runDomainsSPF(ctx context.Context, c *client, out io.Writer, args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: mailx-cli domains spf <get|verify> DOMAIN_ID")
+	}
+	id := args[1]
+	var status map[string]any
+	switch args[0] {
+	case "get":
+		if err := c.get(ctx, "/domains/"+id+"/spf", &status); err != nil {
+			return err
+		}
+	case "verify":
+		if err := c.post(ctx, "/domains/"+id+"/spf/verify", nil, &status); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unknown domains spf command %q (want get|verify)", args[0])
+	}
+	printAuthStatus(out, "SPF", status)
+	return nil
+}
+
+func runDomainsDMARC(ctx context.Context, c *client, out io.Writer, args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: mailx-cli domains dmarc <get|verify> DOMAIN_ID")
+	}
+	id := args[1]
+	var status map[string]any
+	switch args[0] {
+	case "get":
+		if err := c.get(ctx, "/domains/"+id+"/dmarc", &status); err != nil {
+			return err
+		}
+	case "verify":
+		if err := c.post(ctx, "/domains/"+id+"/dmarc/verify", nil, &status); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unknown domains dmarc command %q (want get|verify)", args[0])
+	}
+	printAuthStatus(out, "DMARC", status)
+	return nil
+}
+
+func runDomainsBIMI(ctx context.Context, c *client, out io.Writer, args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: mailx-cli domains bimi <get|verify> DOMAIN_ID")
+	}
+	id := args[1]
+	var status map[string]any
+	switch args[0] {
+	case "get":
+		if err := c.get(ctx, "/domains/"+id+"/bimi", &status); err != nil {
+			return err
+		}
+	case "verify":
+		if err := c.post(ctx, "/domains/"+id+"/bimi/verify", nil, &status); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unknown domains bimi command %q (want get|verify)", args[0])
+	}
+	printAuthStatus(out, "BIMI", status)
 	return nil
 }

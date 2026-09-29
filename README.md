@@ -31,6 +31,9 @@ export MAILX_API_BASE_URL=https://api.mailx.dev/v1   # optional; defaults to thi
 mailx-cli whoami
 
 mailx-cli domains   list | inspect | create | verify | delete [--yes]
+mailx-cli domains   dkim <get|create|verify> DOMAIN_ID
+mailx-cli domains   spf|dmarc <get|verify> DOMAIN_ID
+mailx-cli domains   bimi <get|verify> DOMAIN_ID
 mailx-cli templates list | get | preview | create | update | delete [--yes]
 mailx-cli emails    list | get | diagnose | send
 ```
